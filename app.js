@@ -355,11 +355,24 @@ function mascot(cover, variant = '') {
   return `<img class="mascot ${variant}" src="${esc(image)}" alt="" width="180" height="180">`;
 }
 
+function lobbyMascot() {
+  if (roomCover) return mascot(roomCover);
+  const elapsed = performance.now();
+  return `<span class="chef-flight" aria-hidden="true"
+    style="--flight-delay:-${elapsed%3600}ms;--flap-delay:-${elapsed%360}ms">
+    <span class="chef-flight-shadow"></span>
+    <span class="chef-airframe">
+      ${mascot(null,'chef-body')}
+      ${mascot(null,'chef-wing')}
+    </span>
+  </span>`;
+}
+
 function lobbyMarkup(s) {
-  if (!host) return `<section class="card entry"><div class="welcome">${mascot(roomCover)}<div><p class="eyebrow">PIN ${pin}</p><h1>เข้าห้องแล้ว!</h1></div></div>
+  if (!host) return `<section class="card entry"><div class="welcome">${lobbyMascot()}<div><p class="eyebrow">PIN ${pin}</p><h1>เข้าห้องแล้ว!</h1></div></div>
     <p>${esc(s.name)} ดูจอหลักและรอพิธีกรเริ่มเกม</p>${button('ออกจากห้อง', 'leave', 'ghost')}</section>`;
   return `<div class="lobby">
-    <section class="card entry lobby-intro"><div class="welcome">${mascot(roomCover)}<div><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1></div></div>
+    <section class="card entry lobby-intro"><div class="welcome">${lobbyMascot()}<div><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1></div></div>
       <p>${s.total} คำถาม · เข้าแล้ว <strong>${s.n} คน</strong></p>
       <div class="chips">${s.players.map(p => `<button type="button" data-kick="${p.id}" title="นำผู้เล่นออก">${avatars[p.avatar]} ${esc(p.nickname)}</button>`).join('')}</div>
       <div class="toolbar"><button type="button" data-action="intro" ${s.n?'':'disabled'}>นับถอยหลัง 10 วิ</button>

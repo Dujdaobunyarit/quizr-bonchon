@@ -242,3 +242,49 @@ progress { accent-color: #e10715; }
 @media (prefers-reduced-motion: reduce) {
   .round-count span, .rank-motion li, .rank-motion li[data-rank="1"] strong, .podium-five .podium-place { animation: none; }
 }
+
+.chef-flight {
+  position: relative; display: inline-grid; place-items: center; flex: none;
+  width: clamp(65px,18vw,150px); aspect-ratio: 1; isolation: isolate;
+}
+.lobby .chef-flight { width: clamp(66px,12vw,145px); }
+.host.in-game.wide-stage .chef-flight { width: clamp(58px,8cqw,150px); }
+.chef-airframe {
+  position: absolute; inset: 0; display: grid;
+  filter: drop-shadow(0 5px 4px #77371b39);
+  animation: chef-flight-path 3.6s var(--flight-delay,0ms) ease-in-out infinite;
+}
+.chef-flight .chef-airframe .mascot {
+  grid-area: 1 / 1; width: 100%; height: 100%; transform: none; filter: none;
+}
+.chef-body {
+  clip-path: polygon(0 0,100% 0,100% 29%,78% 29%,71% 40%,68.3% 46%,67.2% 51%,74.5% 62%,100% 62%,100% 100%,0 100%);
+}
+.chef-wing {
+  clip-path: polygon(100% 29%,78% 29%,71% 40%,68.3% 46%,67.2% 51%,74.5% 62%,100% 62%);
+  transform-origin: 70% 52%;
+}
+.chef-flight .chef-wing { animation: chef-wing-flap .36s var(--flap-delay,0ms) ease-in-out infinite alternate; }
+.chef-flight-shadow {
+  position: absolute; z-index: -1; left: 27%; right: 27%; bottom: 1%; height: 9%;
+  border-radius: 50%; background: #88553844; filter: blur(3px);
+  animation: chef-shadow 3.6s var(--flight-delay,0ms) ease-in-out infinite;
+}
+@keyframes chef-flight-path {
+  0%, 100% { transform: translate(-2%,-4%) rotate(-5deg) }
+  25% { transform: translate(4%,-17%) rotate(5deg) }
+  52% { transform: translate(3%,-8%) rotate(-1deg) }
+  73% { transform: translate(-7%,-15%) rotate(-9deg) }
+}
+@keyframes chef-wing-flap {
+  from { transform: rotate(-7deg) scaleY(1.01) }
+  to { transform: rotate(13deg) scaleY(.92) }
+}
+@keyframes chef-shadow {
+  0%, 100% { transform: scale(1); opacity: .63 }
+  25%, 73% { transform: scale(.61); opacity: .28 }
+  52% { transform: scale(.82); opacity: .47 }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chef-flight .chef-airframe, .chef-flight .chef-wing, .chef-flight-shadow { animation: none; }
+}
