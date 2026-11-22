@@ -200,3 +200,6 @@ progress { accent-color: #e10715; }
   .join-form { gap: 9px; }
   .join-form .avatars button { min-height: 40px; font-size: 1.13rem; }
 }
+@media (orientation: landscape) and (min-width: 750px) and (min-height: 360px) {
+  .host.in-game.wide-stage main { width: min(98%,calc((100dvh - 74px) * 19 / 6)); }
+}
