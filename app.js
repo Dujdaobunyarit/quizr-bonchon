@@ -37,6 +37,11 @@ let toolsOpen = true;
 let packs = [];
 let drafts = [];
 let editingId = null;
+let draftCover = null;
+let roomCover;
+let loadingCover = false;
+let historyPages = [null];
+const historyDate = new Intl.DateTimeFormat('th-TH',{dateStyle:'medium',timeStyle:'short'});
 let poll;
 let active = false;
 let connection = 0;
@@ -50,10 +55,29 @@ full.onclick = async () => {
     else await document.documentElement.requestFullscreen();
   } catch { notice('เบราว์เซอร์นี้ไม่สามารถเปิดเต็มจอได้'); }
 };
-document.querySelector('#audio').onclick = async (event) => {
-  const enabled = await audio.toggle();
-  event.target.setAttribute('aria-pressed', enabled);
-  event.target.textContent = enabled ? 'ปิดเสียง' : 'เปิดเสียง';
+const audioControl = document.querySelector('#audio');
+const stageControl = document.querySelector('#wide-stage');
+let wideStage = localStorage.getItem('quizr-wide-stage') !== 'off';
+stageControl.hidden = !host;
+function syncStage() {
+  document.body.classList.toggle('wide-stage',host && wideStage);
+  stageControl.setAttribute('aria-pressed',wideStage);
+}
+syncStage();
+stageControl.onclick = () => {
+  wideStage = !wideStage;
+  localStorage.setItem('quizr-wide-stage',wideStage?'on':'off');
+  syncStage();
+};
+function syncAudio() {
+  audioControl.setAttribute('aria-pressed',audio.enabled);
+  audioControl.textContent = audio.enabled ? 'ปิดเสียง' : 'เปิดเสียง';
+}
+syncAudio();
+audioControl.onclick = async () => {
+  try { await audio.toggle(); }
+  catch { notice('เปิดเสียงไม่ได้บนอุปกรณ์นี้'); }
+  syncAudio();
 };
 
 function esc(value) {
@@ -94,7 +118,7 @@ function keyFor(target) { return 'quizr-player:' + target; }
 function renderJoin(initialPin = params.get('pin') || '') {
   mode.textContent = 'BONCHON NPD QUIZ';
   mount(`<section class="entry card">
-    <p class="eyebrow">BONCHON NPD QUIZ</p><h1>เข้าเกม</h1>
+    <div class="welcome">${mascot()}<div><p class="eyebrow">BONCHON NPD QUIZ</p><h1>เข้าเกม</h1></div></div>
     <p>สแกน QR หรือกรอก PIN จากจอพิธีกร</p>
     <form id="join" class="stack">
       <label>Game PIN<input name="pin" required pattern="[0-9]{6}" inputmode="numeric" maxlength="6" placeholder="กรอกเลข 6 หลัก" value="${esc(initialPin)}"></label>
@@ -173,9 +197,8 @@ async function dashboard() {
         <label>ชุดคำถาม<select name="pack" required>${packs.map(p => `<option value="${esc(p.id)}">${esc(p.title)} · ${p.questions.length} ข้อ</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" name="show"> แสดงคำถามและตัวเลือกบนมือถือ</label>
         <label class="check"><input type="checkbox" name="streak"> โบนัส 100 คะแนนเมื่อถูกติดกันตั้งแต่ 3 ข้อ</label>
-        <label>จำนวนผู้เล่นบนโพเดียม<select name="podium">${[1,2,3,4,5].map(i => `<option ${i===3?'selected':''}>${i}</option>`).join('')}</select></label>
         <button>สร้างเกม</button>
-        <div class="row">${button('แก้ไขชุดที่เลือก', 'edit', 'ghost')}${button('สร้างชุดใหม่', 'new-pack', 'ghost')}${button('ออกจากระบบ', 'logout', 'ghost')}</div>
+        <div class="row">${button('แก้ไขชุดที่เลือก', 'edit', 'ghost')}${button('สร้างชุดใหม่', 'new-pack', 'ghost')}${button('ประวัติผลเกม', 'history', 'ghost')}${button('ออกจากระบบ', 'logout', 'ghost')}</div>
       </form>
     </section>`);
   screen.querySelector('#create').onsubmit = async (event) => {
@@ -184,7 +207,7 @@ async function dashboard() {
     event.submitter.disabled = true;
     try {
       const newPin = await rpc('quizr_create', {
-        p_pack: form.get('pack'), p_show: form.has('show'), p_streak: form.has('streak'), p_podium: Number(form.get('podium'))
+        p_pack: form.get('pack'), p_show: form.has('show'), p_streak: form.has('streak'), p_podium: 5
       });
       localStorage.setItem('quizr-host', newPin);
       connect(newPin);
@@ -201,13 +224,17 @@ function disconnect() {
   channel = null;
   realtime = false;
   view = null;
+  roomCover = undefined;
+  loadingCover = false;
   signature = '';
-  audio.lobby(false);
+  audio.scene('');
+  document.body.classList.remove('in-game');
 }
 
 function connect(target, playerToken = '') {
   disconnect();
   active = true;
+  document.body.classList.add('in-game');
   pin = target;
   token = playerToken;
   if (!host) {
@@ -246,6 +273,7 @@ async function refresh() {
     const state = await rpc('get_view', { p_pin: target, p_token: token || null, p_host: host });
     if (connection !== activeConnection) return;
     if (!channel && state.topic) subscribe(state.topic);
+    if (state.customCover && roomCover === undefined && !loadingCover) fetchRoomCover(activeConnection);
     if (networkWarning) { networkWarning = false; notice('เชื่อมต่อแล้ว'); }
     offset = Date.parse(state.server) - (sent + Date.now()) / 2;
     const nextSignature = JSON.stringify({ ...state, server: null, answered: host ? null : state.answered, n: host ? null : state.n });
@@ -259,6 +287,9 @@ async function refresh() {
     if (signature !== nextSignature) {
       signature = nextSignature;
       renderGame();
+      if (host && state.phase==='question' && (old?.idx!==state.idx || old?.phase!=='question')) audio.play('start');
+      if (host && state.phase==='reveal' && old?.phase!=='reveal') audio.play('reveal');
+      if (host && state.phase==='leaderboard' && old?.phase!=='leaderboard') audio.play('leaderboard');
       if (state.phase === 'podium' && old?.phase !== 'podium') audio.play('podium');
       if (!host && old?.phase !== 'reveal' && state.phase === 'reveal' && state.good !== null) audio.play(state.good ? 'good' : 'bad');
       if (host && old?.phase === 'lobby' && state.phase === 'lobby' && state.n > old.n) audio.play('join');
@@ -279,6 +310,20 @@ async function refresh() {
   }
 }
 
+async function fetchRoomCover(activeConnection) {
+  loadingCover = true;
+  try {
+    const cover = await rpc('quizr_get_cover',{p_pin:pin,p_token:token || null,p_host:host});
+    if (activeConnection !== connection) return;
+    roomCover = cover;
+    if (view?.customCover) renderGame();
+  } catch {
+    // Keep the bundled mascot available while the room image loads.
+  } finally {
+    if (activeConnection === connection) loadingCover = false;
+  }
+}
+
 function leave() {
   disconnect();
   if (host) {
@@ -296,11 +341,16 @@ function playerLink() {
   return new URL('?pin=' + pin, location.href).href;
 }
 
+function mascot(cover, variant = '') {
+  const image = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(cover || '') ? cover : 'assets/mascot.webp';
+  return `<img class="mascot ${variant}" src="${esc(image)}" alt="" width="180" height="180">`;
+}
+
 function lobbyMarkup(s) {
-  if (!host) return `<section class="card entry"><p class="eyebrow">PIN ${pin}</p><h1>เข้าห้องแล้ว!</h1>
+  if (!host) return `<section class="card entry"><div class="welcome">${mascot(roomCover)}<div><p class="eyebrow">PIN ${pin}</p><h1>เข้าห้องแล้ว!</h1></div></div>
     <p>${esc(s.name)} ดูจอหลักและรอพิธีกรเริ่มเกม</p>${button('ออกจากห้อง', 'leave', 'ghost')}</section>`;
   return `<div class="lobby">
-    <section class="card entry"><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1>
+    <section class="card entry lobby-intro"><div class="welcome">${mascot(roomCover)}<div><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1></div></div>
       <p>${s.total} คำถาม · เข้าแล้ว <strong>${s.n} คน</strong></p>
       <div class="chips">${s.players.map(p => `<button type="button" data-kick="${p.id}" title="นำผู้เล่นออก">${avatars[p.avatar]} ${esc(p.nickname)}</button>`).join('')}</div>
       <div class="toolbar"><button type="button" data-action="next" ${s.n?'':'disabled'}>เริ่มเกม</button></div>
@@ -323,7 +373,7 @@ function optionsMarkup(s) {
       ${s.options ? `<span class="option-copy">${esc(label)}${count !== undefined ? `<i class="bar-track" style="width:${width}%"></i>` : ''}</span>` : ''}
       ${count !== undefined ? `<span class="bar">${count}</span>` : ''}`;
     return host || s.phase === 'reveal' ? `<div class="${cls}" ${tone} aria-label="${esc(label)}${correct?' ถูกต้อง':''}">${inside}</div>`
-      : `<button type="button" class="${cls}" ${tone} aria-label="${esc(label)}" data-answer="${index + 1}" ${s.paused?'disabled':''}>${inside}</button>`;
+      : `<button type="button" class="${cls}" ${tone} aria-label="${esc(label)}" data-answer="${index + 1}" ${s.paused || s.locked?'disabled':''}>${inside}</button>`;
   }).join('')}</div>`;
 }
 
@@ -337,36 +387,47 @@ function roundMarkup(s) {
       <p>คำตอบที่ถูก ${s.correct.map(i => s.options ? esc(s.options[i-1]) : symbols[i-1]).join(' / ')}</p></section>`;
   }
   const waiting = !host && s.choice != null;
-  return `<section class="card">${header}
+  return `<section class="card round-card">${header}
     ${s.phase === 'question' ? '<progress id="progress" aria-label="เวลาที่เหลือ"></progress>' : ''}
     ${waiting ? '<h1>ส่งคำตอบแล้ว</h1><p>รอเฉลยจากจอหลัก</p>' : `
-      <h1 class="prompt">${esc(s.text || 'เลือกคำตอบ')}</h1>
-      ${imageTag(s.image)}
+      <div class="round-prompt ${s.image?'has-image':''}"><h1 class="prompt">${esc(s.text || 'เลือกคำตอบ')}</h1>
+      ${imageTag(s.image)}</div>
       ${!host && !s.text ? '<p class="muted">เลือกสีและสัญลักษณ์ให้ตรงกับจอหลัก</p>' : ''}
       ${optionsMarkup(s)}`}
     ${host ? '<p class="muted" id="tally"></p>' : ''}
   </section>`;
 }
 
+function rankList(ranks) {
+  return `<ol class="rank-list">${ranks.map(p => `<li><strong>#${p.rank}</strong><span>${avatars[p.avatar]} ${esc(p.nickname)}</span><b>${numeric.format(p.score)}</b></li>`).join('')}</ol>`;
+}
+
 function rankingMarkup(s) {
   const podium = s.phase === 'podium';
   const heading = podium ? 'ผลการแข่งขัน' : 'อันดับ Top 5';
+  const ranks = s.ranks || [];
   if (!host) return `<section class="card entry"><p class="eyebrow">${heading}</p><h1>อันดับ ${s.me?.rank ?? '–'}</h1>
     <p>${esc(s.name)}</p><div class="score">${numeric.format(s.me?.score || 0)}</div><p>คะแนนรวม</p>
-    ${podium ? button('กลับหน้าเข้าเกม','leave','ghost') : ''}</section>`;
-  const ranks = s.ranks || [];
-  const confetti = podium ? `<div class="confetti" aria-hidden="true">${Array.from({length:45}, (_, i) =>
-    `<i style="left:${i*37%100}%;background:${['#ffd84d','#d7141a','#fff8ef'][i%3]};animation-delay:${i%9/15}s"></i>`).join('')}</div>` : '';
+    ${rankList(ranks)}${podium ? button('กลับหน้าเข้าเกม','leave','ghost') : '<p class="muted">รอพิธีกรเปิดข้อถัดไป</p>'}</section>`;
+  const confetti = podium ? `<div class="confetti" aria-hidden="true">${Array.from({length:65}, (_, i) =>
+    `<i style="left:${i*37%100}%;background:${['#ffd84d','#d7141a','#fff8ef','#e4a5bd'][i%4]};animation-delay:${i%13/12}s"></i>`).join('')}</div>` : '';
   const list = podium
-    ? `<div class="podium">${ranks.map(p => `<article><b>#${p.rank}</b><h2>${avatars[p.avatar]} ${esc(p.nickname)}</h2><strong>${numeric.format(p.score)} คะแนน</strong></article>`).join('')}</div>`
-    : `<ol class="rank-list">${ranks.map(p => `<li><strong>#${p.rank}</strong><span>${avatars[p.avatar]} ${esc(p.nickname)}</span><b>${numeric.format(p.score)}</b></li>`).join('')}</ol>`;
-  return `<section class="card entry">${confetti}<p class="eyebrow">${esc(s.title)}</p><h1>${heading}</h1>${list}</section>`;
+    ? `<div class="podium podium-five" aria-label="โพเดียม 5 อันดับแรก">${ranks.map(p => `
+      <article data-rank="${p.rank}" style="--reveal-delay:${(5-p.rank)*0.22}s">
+        <span class="podium-avatar" aria-hidden="true">${avatars[p.avatar]}</span>
+        <b class="podium-place" aria-label="อันดับ ${p.rank}">${p.rank}</b>
+        <h2>${esc(p.nickname)}</h2><strong>${numeric.format(p.score)} คะแนน</strong>
+      </article>`).join('')}</div>`
+    : rankList(ranks);
+  return `<section class="card entry ${podium?'final-card':''}">${confetti}<div class="between row">
+    <div><p class="eyebrow">${esc(s.title)}</p><h1>${heading}</h1></div>
+    ${podium ? mascot(roomCover,'mascot-win') : ''}</div>${list}</section>`;
 }
 
 function renderGame() {
   const s = view;
   mode.textContent = host ? 'HOST · ' + pin : 'PIN ' + pin;
-  audio.lobby(host && s.phase === 'lobby');
+  audio.scene(host && (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) ? s.phase : '');
   let html;
   if (s.phase === 'lobby') html = lobbyMarkup(s);
   else if (['question','reveal'].includes(s.phase)) html = roundMarkup(s);
@@ -375,15 +436,15 @@ function renderGame() {
     const next = s.idx + 1 === s.total ? 'ขึ้นโพเดียม' : 'ข้อต่อไป';
     const controls = {
       lobby: '',
-      question: button(s.paused ? 'เล่นต่อ' : 'พักเวลา', s.paused ? 'resume' : 'pause','ghost') + button('เฉลยทันที','close'),
-      reveal: button('ดู Top 5','rank','ghost') + button(next,'next'),
+      question: (s.locked ? '' : button(s.paused ? 'เล่นต่อ' : 'พักเวลา', s.paused ? 'resume' : 'pause','ghost')) + button('เฉลย','close'),
+      reveal: button('แสดงอันดับ Top 5','rank'),
       leaderboard: button(next,'next'),
       podium: button('ดาวน์โหลดผล Excel','export')
     };
     html += `<details class="toolbar" ${toolsOpen?'open':''}><summary>แถบควบคุมพิธีกร</summary><div class="row">
       ${controls[s.phase] || ''}${button('เริ่มเกมใหม่','reset','danger')}</div></details>`;
   }
-  mount(html);
+  mount(`<div class="game-stage" data-phase="${s.phase}">${html}</div>`);
   const tools = screen.querySelector('details');
   if (tools) tools.ontoggle = () => { toolsOpen = tools.open; };
   const qrTarget = screen.querySelector('#qr');
@@ -404,22 +465,22 @@ function tick() {
   if (tally) tally.textContent = `ตอบแล้ว ${view.answered || 0} / ${view.n || 0} คน`;
   const clock = screen.querySelector('#clock');
   if (!clock) return;
-  const remaining = Math.max(0, Date.parse(view.end) - (view.paused ? Date.parse(view.paused) : Date.now() + offset));
+  const remaining = view.locked ? 0 : Math.max(0, Date.parse(view.end) - (view.paused ? Date.parse(view.paused) : Date.now() + offset));
   const seconds = Math.ceil(remaining / 1000);
-  clock.textContent = view.paused ? `พักเวลา · ${seconds} วิ` : `${seconds} วิ`;
+  clock.textContent = view.locked ? (host ? 'ปิดรับคำตอบแล้ว' : 'รอเฉลย') : view.paused ? `พักเวลา · ${seconds} วิ` : `${seconds} วิ`;
   const progress = screen.querySelector('#progress');
   progress.max = view.seconds * 1000;
   progress.value = remaining;
   const marker = pin + ':' + view.idx + ':' + seconds;
-  if (host && !view.paused && seconds >= 1 && seconds <= 5 && marker !== lastTick) {
+  if (host && !view.paused && !view.locked && seconds >= 1 && seconds <= 5 && marker !== lastTick) {
     audio.play('tick');
     lastTick = marker;
   }
-  if (!remaining && !view.paused && lastTick !== marker) {
+  if ((!remaining || view.locked) && !view.paused && lastTick !== marker) {
     lastTick = marker;
     refresh();
   }
-  if (!remaining && !host) screen.querySelectorAll('[data-answer]').forEach(b => { b.disabled = true; });
+  if ((!remaining || view.locked) && !host) screen.querySelectorAll('[data-answer]').forEach(b => { b.disabled = true; });
 }
 setInterval(tick, 200);
 
@@ -438,6 +499,7 @@ async function sendAnswer(choice) {
       await rpc('submit_answer', answer);
     }
     accepted = true;
+    audio.play('answer');
     await refresh();
   } catch (error) {
     notice(errorText(error));
@@ -456,6 +518,7 @@ function newQuestion() {
 
 function editPack(pack) {
   editingId = pack?.id || null;
+  draftCover = pack?.cover || null;
   drafts = pack ? structuredClone(pack.questions) : [newQuestion()];
   renderEditor(pack?.title || '');
 }
@@ -463,6 +526,9 @@ function editPack(pack) {
 function renderEditor(title) {
   mount(`<h1>จัดชุดคำถาม</h1><form id="editor" class="card stack">
     <label>ชื่อชุดคำถาม<input name="title" required maxlength="100" value="${esc(title)}"></label>
+    <div class="cover-editor">${mascot(draftCover)}<div class="stack">
+      <label>ภาพหน้าห้องและโพเดียม (PNG, JPG, WebP)<input type="file" id="cover" accept="image/png,image/jpeg,image/webp"></label>
+      ${draftCover ? button('ใช้ภาพมาสคอตเดิม','clear-cover','ghost') : ''}</div></div>
     <label>นำเข้า Excel หรือ CSV<input type="file" id="import" accept=".xlsx,.csv"></label>
     <p class="muted">ใช้คอลัมน์ คำถาม, A, B, C, D, ข้อถูก, เวลา · ระบุข้อถูกด้วยเลข 1–4 คั่นด้วยจุลภาค</p>
     ${drafts.map((q, i) => `<section class="editor-row" data-editor-row="${i}">
@@ -499,7 +565,12 @@ function renderEditor(title) {
     const file = field.files?.[0];
     if (!file) return;
     try {
-      if (field.id === 'import') {
+      if (field.id === 'cover') {
+        const cover = await resizeCover(file);
+        if (!form.isConnected) return;
+        draftCover = cover;
+        renderEditor(form.elements.title.value);
+      } else if (field.id === 'import') {
         const imported = await importQuestions(file);
         if (!form.isConnected) return;
         drafts = imported;
@@ -526,12 +597,30 @@ function renderEditor(title) {
       for (const q of questions) {
         while (q.options.at(-1) === '') q.options.pop();
       }
-      await rpc('quizr_save_pack', {p_id: editingId, p_title: form.elements.title.value, p_questions: questions});
+      await rpc('quizr_save_pack_v2', {p_id: editingId, p_title: form.elements.title.value, p_questions: questions, p_cover: draftCover});
       await dashboard();
       notice('บันทึกชุดคำถามแล้ว');
     } catch (error) { notice(errorText(error)); }
     finally { event.submitter.disabled = false; }
   };
+}
+
+async function resizeCover(file) {
+  if (!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size>8000000) throw new Error('PACK');
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const scale = Math.min(1,512/Math.max(image.naturalWidth,image.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1,Math.round(image.naturalWidth*scale));
+    canvas.height = Math.max(1,Math.round(image.naturalHeight*scale));
+    canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+    const cover = canvas.toDataURL('image/webp',0.8);
+    if (cover.length>400000) throw new Error('PACK');
+    return cover;
+  } finally { URL.revokeObjectURL(url); }
 }
 
 async function importQuestions(file) {
@@ -563,8 +652,23 @@ async function importQuestions(file) {
   return imported;
 }
 
-async function exportResults() {
-  const data = await rpc('export_results', {p_pin: pin});
+async function showHistory(cursor = null, previous = false) {
+  const records = await rpc('quizr_history',{p_before:cursor?.created || null,p_pin:cursor?.pin || null});
+  if (previous) historyPages.pop();
+  else if (cursor) historyPages.push(cursor);
+  else historyPages = [null];
+  const rows = records.slice(0,20);
+  const last = rows.at(-1);
+  mount(`<div class="row between"><h1>ประวัติผลเกม</h1>${button('กลับแผงพิธีกร','dashboard','ghost')}</div>
+    <section class="card stack">${rows.length ? rows.map(g => `<article class="history-row">
+      <div><strong>${esc(g.title)}</strong><div class="muted">${esc(historyDate.format(new Date(g.created)))} · PIN ${g.pin} · ${g.players} คน · ${g.completed?'เล่นจบ':'ปิดก่อนจบ'}</div></div>
+      <button type="button" class="ghost" data-export-pin="${g.pin}">ดาวน์โหลด Excel</button></article>`).join('') : '<p>เกมที่เล่นจบหรือปิดหลังมีคำตอบจะแสดงที่นี่</p>'}
+      <div class="row">${historyPages.length>1 ? button('หน้าก่อน','history-prev','ghost') : ''}
+      ${records.length>20 ? `<button type="button" class="ghost" data-history-before="${esc(last.created)}" data-history-pin="${last.pin}">หน้าถัดไป</button>` : ''}</div></section>`);
+}
+
+async function exportResults(target = pin) {
+  const data = await rpc('export_results', {p_pin: target});
   const book = XLSX.utils.book_new();
   const byKey = new Map(data.answers.map(a => [a.player + ':' + a.idx, a]));
   const details = [['อันดับ','ชื่อ','คะแนน', ...data.questions.flatMap((_, i) => [`ข้อ ${i+1} คำตอบ`,`ข้อ ${i+1} เวลา (วิ)`,`ข้อ ${i+1} คะแนน`])]];
@@ -588,7 +692,7 @@ async function exportResults() {
   perPerson['!cols'] = [{wch:8},{wch:20},{wch:12},...data.questions.flatMap(() => [{wch:26},{wch:17},{wch:14}])];
   XLSX.utils.book_append_sheet(book,perPerson,'รายคน');
   XLSX.utils.book_append_sheet(book,summary,'รายข้อ');
-  XLSX.writeFile(book,'Quizr-' + pin + '.xlsx');
+  XLSX.writeFile(book,'Quizr-' + target + '.xlsx');
 }
 
 screen.onclick = async event => {
@@ -603,11 +707,19 @@ screen.onclick = async event => {
   if (d.answer) { await sendAnswer(Number(d.answer)); return; }
   if (d.action === 'leave') { leave(); return; }
   if (!host) return;
-  if (!(d.action || d.kick || d.remove !== undefined || d.removeImg !== undefined)) return;
+  if (!(d.action || d.kick || d.remove !== undefined || d.removeImg !== undefined || d.exportPin || d.historyBefore)) return;
   control.disabled = true;
   try {
     const titleField = screen.querySelector('#editor input[name=title]');
     if (d.action === 'dashboard') await dashboard();
+    else if (d.action === 'history') await showHistory();
+    else if (d.action === 'history-prev') await showHistory(historyPages.at(-2),true);
+    else if (d.historyBefore) await showHistory({created:d.historyBefore,pin:d.historyPin});
+    else if (d.exportPin) await exportResults(d.exportPin);
+    else if (d.action === 'clear-cover' && titleField) {
+      draftCover = null;
+      renderEditor(titleField.value);
+    }
     else if (d.action === 'logout') {
       const {error} = await db.auth.signOut();
       if (error) throw error;
