@@ -299,7 +299,9 @@ async function refresh() {
       else if (host && state.phase==='question' && (old?.idx!==state.idx || old?.phase!=='question')) audio.play('start');
       if (host && state.phase==='reveal' && old?.phase!=='reveal') audio.play('reveal');
       if (host && state.phase==='leaderboard' && old?.phase!=='leaderboard') audio.play('leaderboard');
-      if (state.phase === 'podium' && old?.phase !== 'podium') audio.play('podium');
+      if (state.phase==='podium' && old?.phase!=='podium') {
+        audio.play(!host && state.me?.rank===1 ? 'winner' : 'podium');
+      }
       if (!host && old?.phase !== 'reveal' && state.phase === 'reveal' && state.good !== null) audio.play(state.good ? 'good' : 'bad');
       if (host && old?.phase === 'lobby' && state.phase === 'lobby' && state.n > old.n) audio.play('join');
     }
@@ -395,7 +397,8 @@ function optionsMarkup(s) {
     const label = s.options?.[index] || ['สามเหลี่ยมสีแดง','ข้าวหลามตัดสีน้ำเงิน','วงกลมสีเหลือง','สี่เหลี่ยมสีเขียว'][index];
     const inside = `<b aria-hidden="true">${symbol}</b>
       ${s.options ? `<span class="option-copy">${esc(label)}${count !== undefined ? `<i class="bar-track" style="width:${width}%"></i>` : ''}</span>` : ''}
-      ${count !== undefined ? `<span class="bar">${count}</span>` : ''}`;
+      ${count !== undefined ? `<span class="bar">${count}</span>` : ''}
+      ${s.phase==='reveal' && correct ? '<span class="choice-check" aria-hidden="true">✓</span>' : ''}`;
     return host || s.phase === 'reveal' ? `<div class="${cls}" ${tone} aria-label="${esc(label)}${correct?' ถูกต้อง':''}">${inside}</div>`
       : `<button type="button" class="${cls}" ${tone} aria-label="${esc(label)}" data-answer="${index + 1}" ${s.paused || s.locked?'disabled':''}>${inside}</button>`;
   }).join('')}</div>`;
@@ -406,12 +409,16 @@ function roundMarkup(s) {
     ${s.phase === 'question' ? '<span id="clock" class="timer"></span>' : '<p class="eyebrow">เฉลย</p>'}</div>`;
   if (!host && s.phase === 'reveal') {
     const heading = s.good === null ? 'ไม่ได้ตอบ' : s.good ? '✓ ถูกต้อง!' : '✗ ยังไม่ถูก';
-    return `<section class="card entry">${header}<h1>${heading}</h1><div class="score">+${numeric.format(s.points)}</div>
-      <p>อันดับ ${s.me?.rank} · คะแนนรวม ${numeric.format(s.me?.score || 0)}</p>
-      <p>คำตอบที่ถูก ${s.correct.map(i => s.options ? esc(s.options[i-1]) : symbols[i-1]).join(' / ')}</p></section>`;
+    return `<section class="card entry answer-result ${s.good?'answer-celebrate':''}">${header}
+      <div class="answer-highlight">
+        <div><h1>${heading}</h1><div class="score">+${numeric.format(s.points)}</div></div>
+        ${s.good?'<img class="answer-sticker" src="assets/drumstick.webp" width="120" height="120" alt="">':''}
+      </div>
+      <p>อันดับ ${s.me?.rank ?? '–'} · คะแนนรวม ${numeric.format(s.me?.score || 0)}</p>
+      <p class="answer-correct">คำตอบที่ถูก <b>${s.correct.map(i => s.options ? esc(s.options[i-1]) : symbols[i-1]).join(' / ')}</b></p></section>`;
   }
   const waiting = !host && s.choice != null;
-  return `<section class="card round-card">${header}
+  return `<section class="card round-card ${s.phase==='reveal'?'revealing':''}">${header}
     ${s.phase === 'question' ? '<progress id="progress" aria-label="เวลาที่เหลือ"></progress>' : ''}
     ${waiting ? '<h1>ส่งคำตอบแล้ว</h1><p>รอเฉลยจากจอหลัก</p>' : `
       <div class="round-prompt ${s.image?'has-image':''}"><h1 class="prompt">${esc(s.text || 'เลือกคำตอบ')}</h1>
@@ -471,6 +478,7 @@ function podiumMarkup(s) {
       <div class="winner-columns" aria-label="โพเดียม 3 อันดับแรก">${finalists.map(p=>`
         <article class="winner-column" data-rank="${p.rank}" style="--award-delay:${(.18+(3-p.rank)*.38).toFixed(2)}s">
           <h2>${esc(p.nickname)}</h2>
+          ${p.rank===1?'<div class="winner-flare" aria-hidden="true"><i>✦</i><i>✦</i><i>✦</i></div>':''}
           <div class="winner-avatar" aria-hidden="true"><span>${avatars[p.avatar] || '⭐'}</span></div>
           <div class="winner-plinth">
             <span class="winner-medal" aria-label="อันดับ ${p.rank}">${p.rank}</span>
@@ -504,7 +512,7 @@ function renderGame() {
   let musicScene='';
   if (host && !introRoom) {
     if (s.phase==='countdown' && s.idx===0) musicScene='opening';
-    else if (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) musicScene=s.phase;
+    else if (['lobby','reveal','podium'].includes(s.phase) || s.phase==='question' && !s.paused && !s.locked) musicScene=s.phase;
   }
   audio.scene(musicScene);
   let html;

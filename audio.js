@@ -23,7 +23,8 @@ window.quizAudio = (() => {
     good: [72, 77, 81, 84, 89],
     bad: [64, 61, 57],
     leaderboard: [62, 69, 74, 77, 81],
-    podium: [65, 72, 77, 81, 84, 89]
+    podium: [65, 65, 72, 77, 81, 84, 89],
+    winner: [72, 77, 81, 84, 89, 93]
   };
   const chords = [[53,57,60,65],[50,53,57,62],[46,50,53,57],[48,52,55,60]];
   const riff = [
@@ -31,6 +32,18 @@ window.quizAudio = (() => {
     [74,null,77,81,null,84,null,81,77,null,74,null,72,74,77,null],
     [70,null,74,77,null,81,null,77,74,null,72,70,null,69,70,null],
     [72,null,76,79,null,84,null,79,76,null,79,null,81,79,76,null]
+  ];
+  const revealTheme = [
+    [null, 77, null, 81, null, 84, null, 81, null, 79, null, 77, null, 74, null, 76],
+    [null, 74, null, 77, null, 81, null, 77, null, 76, null, 74, null, 72, null, 74],
+    [null, 70, null, 74, null, 77, null, 81, null, 77, null, 74, null, 72, null, 70],
+    [null, 72, null, 76, null, 79, null, 84, null, 79, null, 76, null, 79, null, 84]
+  ];
+  const podiumTheme = [
+    [77,null,77,81,84,null,81,null,89,null,88,84,81,null,84,null],
+    [86,null,86,89,93,null,89,null,86,null,84,81,77,null,81,null],
+    [82,null,82,86,89,null,86,null,84,null,82,81,77,null,82,null],
+    [84,null,84,88,91,null,88,null,96,null,93,91,89,null,91,null]
   ];
   const hz = note => 440 * 2 ** ((note - 69) / 12);
 
@@ -68,6 +81,34 @@ window.quizAudio = (() => {
     source.stop(time+length);
   }
 
+  function celebrationBeat(finale) {
+    const bar=currentBar % chords.length;
+    const chord=chords[bar];
+    const beat=60/(finale?124:106)/4;
+    const lead=(finale?podiumTheme:revealTheme)[bar][step];
+    const gain=finale?.078:.045;
+    if (step%4===0) tone(music,40,beatAt,.145,finale?.21:.095,'sine',13);
+    if (step===4 || step===12) percussion(music,beatAt,.09,finale?.18:.08,1250);
+    if (step%2===1) percussion(music,beatAt,.034,finale?.055:.027,5800);
+    if ([0,3,6,8,11,14].includes(step)) {
+      tone(music,chord[step===6 || step===14 ? 2 : 0]-12,beatAt,beat*1.9,finale?.15:.095,'triangle');
+    }
+    if (finale && [0,6,8,14].includes(step)) {
+      for (const note of chord.slice(1)) tone(music,note,beatAt,beat*2.2,.041,'sawtooth');
+    }
+    if (lead) {
+      tone(music,lead,beatAt,beat*1.65,gain);
+      if (finale) tone(music,lead+12,beatAt,beat*.86,.016,'square');
+    }
+    return beat;
+  }
+
+  function advanceBeat(beat) {
+    beatAt += beat;
+    step=(step+1)%16;
+    if (!step) currentBar+=1;
+  }
+
   function schedule() {
     if (context.state !== 'running') return;
     if (beatAt < context.currentTime - 0.09) beatAt = context.currentTime + 0.045;
@@ -76,9 +117,11 @@ window.quizAudio = (() => {
         if (step%4===0) tone(music,40,beatAt,.16,.16,'sine',12);
         percussion(music,beatAt,.056,Math.min(.16,.04+currentBar*.019+(step%4===3?.035:0)),1700);
         if (step%4===2) tone(music,53+(currentBar%4)*3,beatAt,.21,.065,'triangle');
-        beatAt+=.105;
-        step=(step+1)%16;
-        if (!step) currentBar+=1;
+        advanceBeat(.105);
+        continue;
+      }
+      if (scene==='reveal' || scene==='podium') {
+        advanceBeat(celebrationBeat(scene==='podium'));
         continue;
       }
       const quiz = scene === 'question';
@@ -104,9 +147,7 @@ window.quizAudio = (() => {
         tone(music,lead,beatAt,beat*1.5,quiz?.057:.075,'triangle');
         tone(music,lead+12,beatAt,beat*.73,.014,'square');
       }
-      beatAt += beat;
-      step = (step + 1) % 16;
-      if (!step) currentBar += 1;
+      advanceBeat(beat);
     }
   }
 
@@ -122,7 +163,7 @@ window.quizAudio = (() => {
     }
     if (!enabled || !scene || context.state !== 'running') return;
     music = context.createGain();
-    music.gain.value = 0.56;
+    music.gain.value = scene==='reveal' ? .43 : .56;
     music.connect(master);
     step = 0;
     currentBar = 0;
@@ -139,7 +180,10 @@ window.quizAudio = (() => {
       context = new Audio();
       master = context.createGain();
       master.gain.value = 0.65;
-      master.connect(context.destination);
+      const mix=context.createDynamicsCompressor();
+      mix.threshold.value=-12;
+      mix.ratio.value=4;
+      master.connect(mix).connect(context.destination);
     }
     if (context.state !== 'running') await context.resume();
     if (!scheduler) restartMusic();
@@ -170,17 +214,23 @@ window.quizAudio = (() => {
     },
     play(effect) {
       if (!enabled || context?.state !== 'running' || !notes[effect]) return;
-      const fanfare = effect === 'podium';
+      const fanfare = effect === 'podium' || effect==='winner';
+      if (fanfare) {
+        for (let i=0;i<5;i++) {
+          percussion(master,context.currentTime+.055+i*.067,.11,.12+i*.012,1300+i*230);
+        }
+        tone(master,39,context.currentTime+.72,.23,.18,'sine',12);
+      }
       if (effect==='go' || effect==='countLast') {
         tone(master,43,context.currentTime+.014,.18,.24,'sine',17);
       }
       if (fanfare || effect==='leaderboard' || effect==='go') percussion(master,context.currentTime+.02,.11,.17,900);
       notes[effect].forEach((note,index) => {
-        const time=context.currentTime+0.015+index*(fanfare?0.15:0.085);
+        const time=context.currentTime+0.015+index*(fanfare?0.13:0.085);
         tone(master,note,time,fanfare?0.38:0.17,fanfare?0.16:0.13);
         if (fanfare) {
           tone(master,note-12,time,.4,.10,'sine');
-          tone(master,note+7,time,.25,.034,'triangle');
+          tone(master,note+7,time,.25,.054,'sawtooth');
         }
       });
     }
