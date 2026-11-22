@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141414">
+  <title>Quizr | Bonchon NPD Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+  <script defer src="vendor/supabase.js"></script>
+  <script defer src="vendor/qrcode.js"></script>
+  <script defer src="vendor/xlsx.full.min.js"></script>
+  <script defer src="config.js"></script>
+  <script defer src="audio.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./" aria-label="Quizr หน้าแรก">Quiz<span>r</span><i>✦</i></a>
+    <span id="mode">BONCHON NPD QUIZ</span>
+    <div class="top-actions">
+      <button id="audio" type="button" class="ghost" aria-pressed="false">เปิดเสียง</button>
+      <button id="fullscreen" type="button" class="ghost" hidden>เต็มจอ</button>
+    </div>
+  </header>
+  <main id="screen"></main>
+  <div id="message" role="status" aria-live="polite"></div>
+</body>
+</html>
