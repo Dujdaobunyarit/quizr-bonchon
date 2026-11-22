@@ -12,6 +12,7 @@ const db = config.url && config.anonKey ? window.supabase.createClient(config.ur
 const symbols = ['▲', '◆', '●', '■'];
 const avatars = ['🐔', '🌶️', '🍗', '⭐', '🐯', '🐱', '🐻', '🐰', '🐼', '🦊', '🐸', '🦄'];
 const numeric = new Intl.NumberFormat('th-TH');
+const secondsFormat = new Intl.NumberFormat('th-TH',{minimumFractionDigits:3,maximumFractionDigits:3});
 const errors = {
   ADMIN: 'บัญชีนี้ไม่มีสิทธิ์จัดเกม', SESSION: 'หมดเวลาของห้อง หรือออกจากห้องแล้ว',
   LOBBY: 'ไม่พบห้องที่เปิดรับผู้เล่น ตรวจสอบ PIN กับพิธีกร',
@@ -32,6 +33,7 @@ let readAgain = false;
 let busyAnswer = false;
 let offset = 0;
 let lastTick = null;
+let countdownRefreshAt = 0;
 let noticeTimeout;
 let toolsOpen = true;
 let packs = [];
@@ -58,7 +60,7 @@ full.onclick = async () => {
 };
 const audioControl = document.querySelector('#audio');
 const stageControl = document.querySelector('#wide-stage');
-let wideStage = localStorage.getItem('quizr-wide-stage') !== 'off';
+let wideStage = localStorage.getItem('quizr-stage-16-9') !== 'off';
 stageControl.hidden = !host;
 function syncStage() {
   document.body.classList.toggle('wide-stage',host && wideStage);
@@ -67,7 +69,7 @@ function syncStage() {
 syncStage();
 stageControl.onclick = () => {
   wideStage = !wideStage;
-  localStorage.setItem('quizr-wide-stage',wideStage?'on':'off');
+  localStorage.setItem('quizr-stage-16-9',wideStage?'on':'off');
   syncStage();
 };
 function syncAudio() {
@@ -123,7 +125,7 @@ function renderJoin(initialPin = params.get('pin') || '') {
       <p class="eyebrow">BONCHON NPD QUIZ</p>
       <h1>เข้าเกม</h1>
       <p>สแกน QR หรือกรอก PIN จากจอพิธีกร</p>
-      <div class="join-art">${mascot()}<span class="smile-sticker" aria-hidden="true">☺</span></div>
+      <div class="join-art">${mascot()}<img class="join-drumstick" src="assets/drumstick.webp" width="112" height="112" alt=""></div>
     </div>
     <form id="join" class="stack join-form">
       <label>Game PIN<input name="pin" required pattern="[0-9]{6}" inputmode="numeric" maxlength="6" placeholder="กรอกเลข 6 หลัก" value="${esc(initialPin)}"></label>
@@ -211,7 +213,7 @@ async function dashboard() {
     const form = new FormData(event.target);
     event.submitter.disabled = true;
     try {
-      const newPin = await rpc('quizr_create', {
+      const newPin = await rpc('quizr_create_timed', {
         p_pack: form.get('pack'), p_show: form.has('show'), p_streak: form.has('streak'), p_podium: 5
       });
       localStorage.setItem('quizr-host', newPin);
@@ -251,7 +253,7 @@ function connect(target, playerToken = '') {
   let uptime = 0;
   poll = setInterval(() => {
     uptime += 1;
-    if (!realtime || host && ['question','lobby'].includes(view?.phase) || uptime % 8 === 0) refresh();
+    if (!realtime || host && ['countdown','question','lobby'].includes(view?.phase) || uptime % 8 === 0) refresh();
   }, 2000);
   refresh();
 }
@@ -293,7 +295,8 @@ async function refresh() {
     if (signature !== nextSignature) {
       signature = nextSignature;
       renderGame();
-      if (host && state.phase==='question' && (old?.idx!==state.idx || old?.phase!=='question')) audio.play('start');
+      if (state.phase==='question' && old?.phase==='countdown') audio.play('go');
+      else if (host && state.phase==='question' && (old?.idx!==state.idx || old?.phase!=='question')) audio.play('start');
       if (host && state.phase==='reveal' && old?.phase!=='reveal') audio.play('reveal');
       if (host && state.phase==='leaderboard' && old?.phase!=='leaderboard') audio.play('leaderboard');
       if (state.phase === 'podium' && old?.phase !== 'podium') audio.play('podium');
@@ -405,8 +408,29 @@ function roundMarkup(s) {
   </section>`;
 }
 
-function rankList(ranks) {
-  return `<ol class="rank-list">${ranks.map(p => `<li><strong>#${p.rank}</strong><span>${avatars[p.avatar]} ${esc(p.nickname)}</span><b>${numeric.format(p.score)}</b></li>`).join('')}</ol>`;
+function countdownMarkup(s) {
+  return `<section class="card countdown-card">
+    <div><p class="eyebrow">ข้อ ${s.idx + 1} / ${s.total}</p><h1>เตรียมตัว!</h1></div>
+    <div id="round-count" class="round-count" role="timer" aria-label="นับถอยหลังก่อนเริ่มข้อถัดไป">${roundSeconds(s) || 'GO!'}</div>
+    <img class="countdown-sticker" src="assets/drumstick.webp" width="200" height="200" alt="">
+  </section>`;
+}
+
+function roundSeconds(s) {
+  return Math.min(3,Math.max(0,Math.ceil((Date.parse(s.start)-Date.now()-offset)/1000)));
+}
+
+function tieTime(p, ranks) {
+  if (!(p.score>0) || !ranks.some(other=>other.rank!==p.rank && other.score===p.score)) return '';
+  return `<small class="tie-time" title="เวลารวมที่ใช้ตอบถูก">${secondsFormat.format(p.correct_time_ms/1000)} วิ</small>`;
+}
+
+function rankList(ranks, animate = false) {
+  return `<ol class="rank-list${animate?' rank-motion':''}">${ranks.map(p => `
+    <li style="--rank-delay:${(ranks.length-p.rank)*0.16}s" data-rank="${p.rank}">
+      <strong>#${p.rank}</strong><span>${avatars[p.avatar]} ${esc(p.nickname)}</span>
+      <b>${numeric.format(p.score)}${tieTime(p,ranks)}</b>
+    </li>`).join('')}</ol>`;
 }
 
 function rankingMarkup(s) {
@@ -415,20 +439,20 @@ function rankingMarkup(s) {
   const ranks = s.ranks || [];
   if (!host) return `<section class="card entry"><p class="eyebrow">${heading}</p><h1>อันดับ ${s.me?.rank ?? '–'}</h1>
     <p>${esc(s.name)}</p><div class="score">${numeric.format(s.me?.score || 0)}</div><p>คะแนนรวม</p>
-    ${rankList(ranks)}${podium ? button('กลับหน้าเข้าเกม','leave','ghost') : '<p class="muted">รอพิธีกรเปิดข้อถัดไป</p>'}</section>`;
+    ${rankList(ranks,true)}${podium ? button('กลับหน้าเข้าเกม','leave','ghost') : '<p class="muted">รอพิธีกรเปิดข้อถัดไป</p>'}</section>`;
   const confetti = podium ? `<div class="confetti" aria-hidden="true">${Array.from({length:65}, (_, i) =>
     `<i style="left:${i*37%100}%;background:${['#ffd84d','#d7141a','#fff8ef','#e4a5bd'][i%4]};animation-delay:${i%13/12}s"></i>`).join('')}</div>` : '';
   const list = podium
     ? `<div class="podium podium-five" aria-label="โพเดียม 5 อันดับแรก">${ranks.map(p => `
-      <article data-rank="${p.rank}" style="--reveal-delay:${(5-p.rank)*0.22}s">
+      <article data-rank="${p.rank}" style="--reveal-delay:${(ranks.length-p.rank)*0.27}s">
         <span class="podium-avatar" aria-hidden="true">${avatars[p.avatar]}</span>
         <b class="podium-place" aria-label="อันดับ ${p.rank}">${p.rank}</b>
-        <h2>${esc(p.nickname)}</h2><strong>${numeric.format(p.score)} คะแนน</strong>
+        <h2>${esc(p.nickname)}</h2><strong>${numeric.format(p.score)} คะแนน${tieTime(p,ranks)}</strong>
       </article>`).join('')}</div>`
-    : rankList(ranks);
+    : rankList(ranks,true);
   return `<section class="card entry ${podium?'final-card':''}">${confetti}<div class="between row">
     <div><p class="eyebrow">${esc(s.title)}</p><h1>${heading}</h1></div>
-    ${podium ? mascot(roomCover,'mascot-win') : ''}</div>${list}</section>`;
+    ${podium ? mascot(roomCover,'mascot-win') : '<img class="leaderboard-sticker" src="assets/drumstick.webp" width="100" height="100" alt="">'}</div>${list}</section>`;
 }
 
 function renderGame() {
@@ -437,6 +461,7 @@ function renderGame() {
   audio.scene(host && !introRoom && (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) ? s.phase : '');
   let html;
   if (s.phase === 'lobby') html = lobbyMarkup(s);
+  else if (s.phase==='countdown') html = countdownMarkup(s);
   else if (['question','reveal'].includes(s.phase)) html = roundMarkup(s);
   else html = rankingMarkup(s);
   if (host) {
@@ -537,6 +562,24 @@ introDialog.addEventListener('cancel',event=>{
 
 function tick() {
   if (!view) return;
+  if (view.phase==='countdown') {
+    const digit=screen.querySelector('#round-count');
+    const seconds=roundSeconds(view);
+    const label=seconds ? String(seconds) : 'GO!';
+    if (digit && digit.dataset.tick!==label) {
+      const face=document.createElement('span');
+      face.textContent=label;
+      digit.replaceChildren(face);
+      digit.dataset.tick=label;
+      if (seconds) audio.play('count');
+    }
+    const now=performance.now();
+    if (!seconds && !busyRead && now-countdownRefreshAt>=240) {
+      countdownRefreshAt=now;
+      refresh();
+    }
+    return;
+  }
   const tally = screen.querySelector('#tally');
   if (tally) tally.textContent = `ตอบแล้ว ${view.answered || 0} / ${view.n || 0} คน`;
   const clock = screen.querySelector('#clock');
@@ -747,9 +790,9 @@ async function exportResults(target = pin) {
   const data = await rpc('export_results', {p_pin: target});
   const book = XLSX.utils.book_new();
   const byKey = new Map(data.answers.map(a => [a.player + ':' + a.idx, a]));
-  const details = [['อันดับ','ชื่อ','คะแนน', ...data.questions.flatMap((_, i) => [`ข้อ ${i+1} คำตอบ`,`ข้อ ${i+1} เวลา (วิ)`,`ข้อ ${i+1} คะแนน`])]];
+  const details = [['อันดับ','ชื่อ','คะแนน','เวลารวมตอบถูก (วิ)', ...data.questions.flatMap((_, i) => [`ข้อ ${i+1} คำตอบ`,`ข้อ ${i+1} เวลา (วิ)`,`ข้อ ${i+1} คะแนน`])]];
   for (const p of data.players) {
-    details.push([p.rank,p.nickname,p.score,...data.questions.flatMap((q,i) => {
+    details.push([p.rank,p.nickname,p.score,(p.correct_time_ms || 0)/1000,...data.questions.flatMap((q,i) => {
       const a = byKey.get(p.id + ':' + i);
       return a ? [q.options[a.choice-1],a.elapsed/1000,a.points] : ['', '', 0];
     })]);
@@ -765,7 +808,7 @@ async function exportResults(target = pin) {
   stats.forEach((_,i) => { summary['F'+(i+2)].z = '0.0%'; });
   summary['!cols'] = [{wch:7},{wch:64},{wch:12},{wch:12},{wch:12},{wch:27},{wch:15}];
   const perPerson = XLSX.utils.aoa_to_sheet(details);
-  perPerson['!cols'] = [{wch:8},{wch:20},{wch:12},...data.questions.flatMap(() => [{wch:26},{wch:17},{wch:14}])];
+  perPerson['!cols'] = [{wch:8},{wch:20},{wch:12},{wch:23},...data.questions.flatMap(() => [{wch:26},{wch:17},{wch:14}])];
   XLSX.utils.book_append_sheet(book,perPerson,'รายคน');
   XLSX.utils.book_append_sheet(book,summary,'รายข้อ');
   XLSX.writeFile(book,'Quizr-' + target + '.xlsx');

@@ -151,9 +151,9 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
   .host.in-game .top { min-height: 48px; padding-block: max(5px,env(safe-area-inset-top)) 5px }
   .host.in-game main { width: min(97%,105rem); min-height: calc(100dvh - 64px); display: grid; place-items: center; padding-block: 4px }
   .host.in-game .game-stage { width: 100%; display: flex; flex-direction: column; }
-  .host.in-game.wide-stage main { width: min(98%,calc((100dvh - 58px) * 19 / 6)); }
+  .host.in-game.wide-stage main { width: min(98%,calc((100dvh - 58px) * 16 / 9)); }
   .host.in-game.wide-stage .game-stage {
-    aspect-ratio: 19 / 6; padding: clamp(5px,1vmin,14px); border: 1px solid #74444a;
+    aspect-ratio: 16 / 9; padding: clamp(5px,1vmin,14px); border: 1px solid #74444a;
     border-radius: 16px; background: #221718; container-type: inline-size;
   }
   .host.in-game .game-stage > :first-child { flex: 1; min-height: 0 }

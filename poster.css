@@ -201,5 +201,44 @@ progress { accent-color: #e10715; }
   .join-form .avatars button { min-height: 40px; font-size: 1.13rem; }
 }
 @media (orientation: landscape) and (min-width: 750px) and (min-height: 360px) {
-  .host.in-game.wide-stage main { width: min(98%,calc((100dvh - 74px) * 19 / 6)); }
+  .host.in-game.wide-stage main { width: min(98%,calc((100dvh - 74px) * 16 / 9)); }
+}
+
+.join-drumstick {
+  position: absolute; right: -12%; bottom: 9%; z-index: -1; width: 52%; height: auto;
+  transform: rotate(14deg); filter: drop-shadow(1px 4px 4px #42230d36);
+}
+.leaderboard-sticker { display: block; width: clamp(54px,9vw,100px); height: auto; transform: rotate(9deg); }
+.countdown-card {
+  display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  align-items: center; gap: clamp(8px,2.4vw,40px);
+  background: radial-gradient(ellipse at 52% 120%,#ffe567,transparent 62%),var(--paper);
+}
+.countdown-card h1 { font-style: italic; margin-bottom: 0; }
+.round-count {
+  min-width: 1.7em; min-height: 1.18em; display: grid; place-items: center;
+  font-size: clamp(5.6rem,16vw,14rem); font-weight: 800; line-height: .95;
+  font-variant-numeric: tabular-nums; color: #c70c19; text-shadow: 3px 4px 0 #241212;
+}
+.round-count span { animation: count-pop .65s cubic-bezier(.19,.8,.29,1) both; }
+.round-count[data-tick="GO!"] { font-size: clamp(3.3rem,10vw,8rem); color: #171211; text-shadow: 2px 3px 0 #e6ac0f; }
+.countdown-sticker {
+  justify-self: center; max-width: 100%; width: clamp(76px,17vw,220px); height: auto; transform: rotate(8deg);
+  filter: drop-shadow(0 6px 3px #4c150c22);
+}
+.rank-motion li { animation: rank-slide .48s cubic-bezier(.15,.75,.22,1.09) var(--rank-delay) both; }
+.rank-motion li[data-rank="1"] strong { animation: rank-pop .48s cubic-bezier(.18,.81,.22,1.35) var(--rank-delay) both; }
+.tie-time { display: block; margin-top: 1px; font-size: .72em; font-weight: 600; white-space: nowrap; opacity: .82; }
+.podium-five .tie-time { text-align: center; }
+.podium-five .podium-place { animation: rank-pop .5s cubic-bezier(.21,.85,.45,1.28) calc(var(--reveal-delay) + .19s) both; }
+@keyframes count-pop { from { opacity: .5; transform: scale(.74) rotate(-6deg) } 38% { transform: scale(1.13) rotate(2deg) } }
+@keyframes rank-slide { from { opacity: 0; transform: translate3d(-28px,12px,0) scale(.96) } }
+@keyframes rank-pop { from { transform: scale(.7); opacity: .4 } }
+@media (max-width: 625px) {
+  body:not(.host) .countdown-card, .host .countdown-card { grid-template-columns: 1fr; text-align: center; }
+  .countdown-sticker { width: clamp(76px,23vw,132px); }
+  .join-drumstick { right: -7%; bottom: -4%; width: 54%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .round-count span, .rank-motion li, .rank-motion li[data-rank="1"] strong, .podium-five .podium-place { animation: none; }
 }
