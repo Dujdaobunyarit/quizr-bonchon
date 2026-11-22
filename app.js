@@ -427,7 +427,14 @@ async function sendAnswer(choice) {
   let accepted = false;
   screen.querySelectorAll('[data-answer]').forEach(b => { b.disabled = true; });
   try {
-    await rpc('submit_answer', { p_pin: pin, p_token: token, p_idx: view.idx, p_choice: choice });
+    const answer = {p_pin: pin, p_token: token, p_idx: view.idx, p_choice: choice};
+    try {
+      await rpc('submit_answer', answer);
+    } catch (error) {
+      const transient = /fetch|network|abort|timeout/i.test(error.message);
+      if (!transient || Date.now() + offset >= Date.parse(view?.end)) throw error;
+      await rpc('submit_answer', answer);
+    }
     accepted = true;
     await refresh();
   } catch (error) {
