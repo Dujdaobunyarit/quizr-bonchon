@@ -46,6 +46,7 @@ let poll;
 let active = false;
 let connection = 0;
 let networkWarning = false;
+let introRoom = null;
 
 document.body.classList.toggle('host', host);
 full.hidden = !host || !document.documentElement.requestFullscreen;
@@ -117,10 +118,14 @@ function keyFor(target) { return 'quizr-player:' + target; }
 
 function renderJoin(initialPin = params.get('pin') || '') {
   mode.textContent = 'BONCHON NPD QUIZ';
-  mount(`<section class="entry card">
-    <div class="welcome">${mascot()}<div><p class="eyebrow">BONCHON NPD QUIZ</p><h1>เข้าเกม</h1></div></div>
-    <p>สแกน QR หรือกรอก PIN จากจอพิธีกร</p>
-    <form id="join" class="stack">
+  mount(`<section class="entry card join-card">
+    <div class="join-poster">
+      <p class="eyebrow">BONCHON NPD QUIZ</p>
+      <h1>เข้าเกม</h1>
+      <p>สแกน QR หรือกรอก PIN จากจอพิธีกร</p>
+      <div class="join-art">${mascot()}<span class="smile-sticker" aria-hidden="true">☺</span></div>
+    </div>
+    <form id="join" class="stack join-form">
       <label>Game PIN<input name="pin" required pattern="[0-9]{6}" inputmode="numeric" maxlength="6" placeholder="กรอกเลข 6 หลัก" value="${esc(initialPin)}"></label>
       <label>ชื่อเล่น<input name="nickname" required maxlength="30" autocomplete="off" placeholder="2–15 ตัวอักษร"></label>
       <fieldset><legend>เลือกอวตาร</legend><div class="avatars">
@@ -160,8 +165,8 @@ function renderJoin(initialPin = params.get('pin') || '') {
 }
 
 function renderLogin() {
-  mount(`<section class="card stack" style="max-width:31rem">
-    <h1>เข้าสู่ระบบพิธีกร</h1>
+  mount(`<section class="card stack login-card">
+    <p class="eyebrow">QUIZR HOST</p><h1>เข้าสู่ระบบพิธีกร</h1>
     <form class="stack" id="login">
       <label>ชื่อผู้ใช้หรืออีเมล<input type="text" name="login" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
       <label>รหัสผ่าน<input type="password" name="password" required autocomplete="current-password"></label>
@@ -191,8 +196,8 @@ async function dashboard() {
       <div class="row">${button('ลองอีกครั้ง', 'dashboard')}${button('ออกจากระบบ', 'logout', 'ghost')}</div></section>`);
     return;
   }
-  mount(`<p class="eyebrow">BONCHON NPD QUIZ</p><h1>สร้างห้องเกม</h1>
-    <section class="card stack">
+  mount(`<section class="card stack admin-board">
+    <div class="row between admin-heading"><div><p class="eyebrow">BONCHON NPD QUIZ</p><h1>สร้างห้องเกม</h1></div>${mascot()}</div>
       <form id="create" class="stack">
         <label>ชุดคำถาม<select name="pack" required>${packs.map(p => `<option value="${esc(p.id)}">${esc(p.title)} · ${p.questions.length} ข้อ</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" name="show"> แสดงคำถามและตัวเลือกบนมือถือ</label>
@@ -227,6 +232,7 @@ function disconnect() {
   roomCover = undefined;
   loadingCover = false;
   signature = '';
+  closeIntro();
   audio.scene('');
   document.body.classList.remove('in-game');
 }
@@ -353,7 +359,8 @@ function lobbyMarkup(s) {
     <section class="card entry lobby-intro"><div class="welcome">${mascot(roomCover)}<div><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1></div></div>
       <p>${s.total} คำถาม · เข้าแล้ว <strong>${s.n} คน</strong></p>
       <div class="chips">${s.players.map(p => `<button type="button" data-kick="${p.id}" title="นำผู้เล่นออก">${avatars[p.avatar]} ${esc(p.nickname)}</button>`).join('')}</div>
-      <div class="toolbar"><button type="button" data-action="next" ${s.n?'':'disabled'}>เริ่มเกม</button></div>
+      <div class="toolbar"><button type="button" data-action="intro" ${s.n?'':'disabled'}>นับถอยหลัง 10 วิ</button>
+      <button type="button" class="ghost" data-action="next" ${s.n?'':'disabled'}>เริ่มเกม</button></div>
     </section>
     <section class="card pin-card"><h2>สแกนเพื่อเข้าเกม</h2><div id="qr"></div><div class="pin">${pin}</div>
       <a href="${esc(playerLink())}" target="_blank" rel="noopener">${esc(location.host + location.pathname + '?pin=' + pin)}</a>
@@ -427,7 +434,7 @@ function rankingMarkup(s) {
 function renderGame() {
   const s = view;
   mode.textContent = host ? 'HOST · ' + pin : 'PIN ' + pin;
-  audio.scene(host && (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) ? s.phase : '');
+  audio.scene(host && !introRoom && (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) ? s.phase : '');
   let html;
   if (s.phase === 'lobby') html = lobbyMarkup(s);
   else if (['question','reveal'].includes(s.phase)) html = roundMarkup(s);
@@ -458,6 +465,75 @@ function renderGame() {
     } catch { qrTarget.textContent = 'ใช้ PIN หรือลิงก์เพื่อเข้าเกม'; }
   }
 }
+
+const introDialog = document.querySelector('#countdown');
+const introVideo = introDialog.querySelector('video');
+const introSound = document.querySelector('#countdown-sound');
+const introStart = document.querySelector('#countdown-start');
+
+function syncIntroSound() {
+  introSound.setAttribute('aria-pressed',!introVideo.muted);
+  introSound.textContent = introVideo.muted ? 'เปิดเสียงคลิป' : 'ปิดเสียงคลิป';
+}
+
+function playIntro() {
+  if (introRoom || view?.phase !== 'lobby' || !view.n) return;
+  introRoom = { pin, idx:view.idx, connection };
+  introVideo.src = 'assets/countdown.mp4';
+  introVideo.muted = !audio.enabled;
+  introStart.textContent = 'ข้ามคลิปและเริ่มเกม';
+  syncIntroSound();
+  audio.scene('');
+  introDialog.showModal();
+  introVideo.play().catch(showIntroFallback);
+}
+
+function showIntroFallback() {
+  if (introRoom) introStart.textContent = 'เริ่มเกมเลย';
+}
+
+function closeIntro() {
+  const room = introRoom;
+  introRoom = null;
+  if (introDialog.open) introDialog.close();
+  if (room) {
+    introVideo.pause();
+    introVideo.removeAttribute('src');
+    introVideo.load();
+  }
+  return room;
+}
+
+async function startAfterIntro() {
+  const room = closeIntro();
+  if (!room || room.connection !== connection || view?.phase !== 'lobby') return;
+  try {
+    await rpc('host_next',{p_pin:room.pin,p_action:'next',p_idx:room.idx,p_phase:'lobby',p_player:null});
+    await refresh();
+  } catch (error) {
+    notice(errorText(error));
+  } finally {
+    if (connection === room.connection && view?.phase === 'lobby') audio.scene('lobby');
+  }
+}
+
+function cancelIntro() {
+  closeIntro();
+  if (view?.phase === 'lobby') audio.scene('lobby');
+}
+
+introSound.onclick = () => {
+  introVideo.muted = !introVideo.muted;
+  syncIntroSound();
+};
+introStart.onclick = startAfterIntro;
+introVideo.onended = startAfterIntro;
+introVideo.onerror = showIntroFallback;
+document.querySelector('#countdown-cancel').onclick = cancelIntro;
+introDialog.addEventListener('cancel',event=>{
+  event.preventDefault();
+  cancelIntro();
+});
 
 function tick() {
   if (!view) return;
@@ -744,7 +820,8 @@ screen.onclick = async event => {
     } else if (d.action === 'copy') {
       await navigator.clipboard.writeText(playerLink());
       notice('คัดลอกลิงก์แล้ว');
-    } else if (d.action === 'export') await exportResults();
+    } else if (d.action === 'intro') playIntro();
+    else if (d.action === 'export') await exportResults();
     else if (view) {
       if (d.kick && !confirm('นำผู้เล่นนี้ออกจากห้อง?')) return;
       if (d.action === 'reset' && !confirm('ปิดห้องนี้แล้วกลับไปสร้างเกมใหม่?')) return;
