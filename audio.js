@@ -16,8 +16,10 @@ window.quizAudio = (() => {
     answer: [76, 84],
     reveal: [67, 72, 76, 79],
     tick: [88],
-    count: [76],
-    go: [81, 89],
+    count: [69, 81],
+    countMid: [74, 86],
+    countLast: [77, 89, 93],
+    go: [77, 81, 84, 89],
     good: [72, 77, 81, 84, 89],
     bad: [64, 61, 57],
     leaderboard: [62, 69, 74, 77, 81],
@@ -70,6 +72,15 @@ window.quizAudio = (() => {
     if (context.state !== 'running') return;
     if (beatAt < context.currentTime - 0.09) beatAt = context.currentTime + 0.045;
     while (beatAt < context.currentTime + 0.16) {
+      if (scene==='opening') {
+        if (step%4===0) tone(music,40,beatAt,.16,.16,'sine',12);
+        percussion(music,beatAt,.056,Math.min(.16,.04+currentBar*.019+(step%4===3?.035:0)),1700);
+        if (step%4===2) tone(music,53+(currentBar%4)*3,beatAt,.21,.065,'triangle');
+        beatAt+=.105;
+        step=(step+1)%16;
+        if (!step) currentBar+=1;
+        continue;
+      }
       const quiz = scene === 'question';
       const bar = currentBar % chords.length;
       const chord = chords[bar];
@@ -160,7 +171,10 @@ window.quizAudio = (() => {
     play(effect) {
       if (!enabled || context?.state !== 'running' || !notes[effect]) return;
       const fanfare = effect === 'podium';
-      if (fanfare || effect==='leaderboard') percussion(master,context.currentTime+.02,.11,.17,900);
+      if (effect==='go' || effect==='countLast') {
+        tone(master,43,context.currentTime+.014,.18,.24,'sine',17);
+      }
+      if (fanfare || effect==='leaderboard' || effect==='go') percussion(master,context.currentTime+.02,.11,.17,900);
       notes[effect].forEach((note,index) => {
         const time=context.currentTime+0.015+index*(fanfare?0.15:0.085);
         tone(master,note,time,fanfare?0.38:0.17,fanfare?0.16:0.13);

@@ -359,8 +359,9 @@ function lobbyMascot() {
   if (roomCover) return mascot(roomCover);
   const elapsed = performance.now();
   return `<span class="chef-flight" aria-hidden="true"
-    style="--flight-delay:-${elapsed%3600}ms;--flap-delay:-${elapsed%360}ms">
+    style="--flight-delay:-${elapsed%4600}ms;--flap-delay:-${elapsed%320}ms">
     <span class="chef-flight-shadow"></span>
+    <span class="chef-star star-a">✦</span><span class="chef-star star-b">✦</span><span class="chef-star star-c">✧</span>
     <span class="chef-airframe">
       ${mascot(null,'chef-body')}
       ${mascot(null,'chef-wing')}
@@ -375,8 +376,8 @@ function lobbyMarkup(s) {
     <section class="card entry lobby-intro"><div class="welcome">${lobbyMascot()}<div><p class="eyebrow">BONCHON TRAINING</p><h1>${esc(s.title)}</h1></div></div>
       <p>${s.total} คำถาม · เข้าแล้ว <strong>${s.n} คน</strong></p>
       <div class="chips">${s.players.map(p => `<button type="button" data-kick="${p.id}" title="นำผู้เล่นออก">${avatars[p.avatar]} ${esc(p.nickname)}</button>`).join('')}</div>
-      <div class="toolbar"><button type="button" data-action="intro" ${s.n?'':'disabled'}>นับถอยหลัง 10 วิ</button>
-      <button type="button" class="ghost" data-action="next" ${s.n?'':'disabled'}>เริ่มเกม</button></div>
+      <div class="toolbar"><button type="button" class="ghost" data-action="intro" ${s.n?'':'disabled'}>คลิปเปิดงาน 10 วิ</button>
+      <button type="button" data-action="next" ${s.n?'':'disabled'}>เริ่มเกม</button></div>
     </section>
     <section class="card pin-card"><h2>สแกนเพื่อเข้าเกม</h2><div id="qr"></div><div class="pin">${pin}</div>
       <a href="${esc(playerLink())}" target="_blank" rel="noopener">${esc(location.host + location.pathname + '?pin=' + pin)}</a>
@@ -422,15 +423,22 @@ function roundMarkup(s) {
 }
 
 function countdownMarkup(s) {
-  return `<section class="card countdown-card">
-    <div><p class="eyebrow">ข้อ ${s.idx + 1} / ${s.total}</p><h1>เตรียมตัว!</h1></div>
-    <div id="round-count" class="round-count" role="timer" aria-label="นับถอยหลังก่อนเริ่มข้อถัดไป">${roundSeconds(s) || 'GO!'}</div>
+  const opening=s.idx===0;
+  const length=opening?5:3;
+  const seconds=roundSeconds(s);
+  const ticks=Array.from({length},()=>'<i></i>').join('');
+  return `<section class="card countdown-card ${opening?'opening-countdown':''}">
+    <div><p class="eyebrow">ข้อ ${s.idx + 1} / ${s.total}</p><h1>${opening?'พร้อมเล่นไหม?':'เตรียมตัว!'}</h1></div>
+    <div class="countdown-beats">
+      <div id="round-count" class="round-count" role="timer" aria-label="${opening?'นับถอยหลังก่อนเริ่มเกม':'นับถอยหลังก่อนเริ่มข้อถัดไป'}"><span>${seconds || 'GO!'}</span></div>
+      <div id="round-pips" class="round-pips" data-lit="${seconds}" aria-hidden="true">${ticks}</div>
+    </div>
     <img class="countdown-sticker" src="assets/drumstick.webp" width="200" height="200" alt="">
   </section>`;
 }
 
 function roundSeconds(s) {
-  return Math.min(3,Math.max(0,Math.ceil((Date.parse(s.start)-Date.now()-offset)/1000)));
+  return Math.min(s.idx===0?5:3,Math.max(0,Math.ceil((Date.parse(s.start)-Date.now()-offset)/1000)));
 }
 
 function tieTime(p, ranks) {
@@ -446,32 +454,59 @@ function rankList(ranks, animate = false) {
     </li>`).join('')}</ol>`;
 }
 
+function podiumMarkup(s) {
+  const ranks=s.ranks || [];
+  const finalists=ranks.filter(p=>p.rank<=3);
+  const runnersUp=ranks.filter(p=>p.rank>3);
+  const sparks=`<div class="final-sparks" aria-hidden="true">${Array.from({length:42},(_,i)=>
+    `<i style="--x:${i*37%100}%;--turn:${i*29%180}deg;--fall-delay:${(.15+i%9*.13).toFixed(2)}s;--spark:${['#ffe338','#fff4d8','#ff6c64'][i%3]}"></i>`).join('')}</div>`;
+  return `<section class="winner-stage" aria-label="ผลการแข่งขัน">
+    ${sparks}
+    <header class="winner-header">
+      <img class="winner-drumstick" src="assets/drumstick.webp" width="100" height="100" alt="">
+      <div><p class="winner-quiz">${esc(s.title)}</p><h1>ผลการแข่งขัน</h1></div>
+      ${mascot(roomCover,'winner-chef')}
+    </header>
+    <div class="winner-content">
+      <div class="winner-columns" aria-label="โพเดียม 3 อันดับแรก">${finalists.map(p=>`
+        <article class="winner-column" data-rank="${p.rank}" style="--award-delay:${(.18+(3-p.rank)*.38).toFixed(2)}s">
+          <h2>${esc(p.nickname)}</h2>
+          <div class="winner-avatar" aria-hidden="true"><span>${avatars[p.avatar] || '⭐'}</span></div>
+          <div class="winner-plinth">
+            <span class="winner-medal" aria-label="อันดับ ${p.rank}">${p.rank}</span>
+            <strong>${numeric.format(p.score)} <small>คะแนน</small>${tieTime(p,ranks)}</strong>
+          </div>
+        </article>`).join('')}</div>
+      ${runnersUp.length?`<ol class="winner-runners" start="4">${runnersUp.map(p=>`
+        <li class="winner-strip" data-rank="${p.rank}"><strong>${p.rank}</strong><span>${avatars[p.avatar]} ${esc(p.nickname)}</span>
+        <b>${numeric.format(p.score)}${tieTime(p,ranks)}</b></li>`).join('')}</ol>`:''}
+      ${!host && s.me?`<div class="winner-strip winner-self"><strong>${s.me.rank}</strong><span>อันดับของคุณ · ${esc(s.name)}</span><b>${numeric.format(s.me.score)}</b></div>`:''}
+    </div>
+    ${!host?`<div class="winner-return">${button('กลับหน้าเข้าเกม','leave','ghost')}</div>`:''}
+  </section>`;
+}
+
 function rankingMarkup(s) {
-  const podium = s.phase === 'podium';
-  const heading = podium ? 'ผลการแข่งขัน' : 'อันดับ Top 5';
-  const ranks = s.ranks || [];
+  if (s.phase==='podium') return podiumMarkup(s);
+  const heading='อันดับ Top 5';
+  const ranks=s.ranks || [];
   if (!host) return `<section class="card entry"><p class="eyebrow">${heading}</p><h1>อันดับ ${s.me?.rank ?? '–'}</h1>
     <p>${esc(s.name)}</p><div class="score">${numeric.format(s.me?.score || 0)}</div><p>คะแนนรวม</p>
-    ${rankList(ranks,true)}${podium ? button('กลับหน้าเข้าเกม','leave','ghost') : '<p class="muted">รอพิธีกรเปิดข้อถัดไป</p>'}</section>`;
-  const confetti = podium ? `<div class="confetti" aria-hidden="true">${Array.from({length:65}, (_, i) =>
-    `<i style="left:${i*37%100}%;background:${['#ffd84d','#d7141a','#fff8ef','#e4a5bd'][i%4]};animation-delay:${i%13/12}s"></i>`).join('')}</div>` : '';
-  const list = podium
-    ? `<div class="podium podium-five" aria-label="โพเดียม 5 อันดับแรก">${ranks.map(p => `
-      <article data-rank="${p.rank}" style="--reveal-delay:${(ranks.length-p.rank)*0.27}s">
-        <span class="podium-avatar" aria-hidden="true">${avatars[p.avatar]}</span>
-        <b class="podium-place" aria-label="อันดับ ${p.rank}">${p.rank}</b>
-        <h2>${esc(p.nickname)}</h2><strong>${numeric.format(p.score)} คะแนน${tieTime(p,ranks)}</strong>
-      </article>`).join('')}</div>`
-    : rankList(ranks,true);
-  return `<section class="card entry ${podium?'final-card':''}">${confetti}<div class="between row">
+    ${rankList(ranks,true)}<p class="muted">รอพิธีกรเปิดข้อถัดไป</p></section>`;
+  return `<section class="card entry"><div class="between row">
     <div><p class="eyebrow">${esc(s.title)}</p><h1>${heading}</h1></div>
-    ${podium ? mascot(roomCover,'mascot-win') : '<img class="leaderboard-sticker" src="assets/drumstick.webp" width="100" height="100" alt="">'}</div>${list}</section>`;
+    <img class="leaderboard-sticker" src="assets/drumstick.webp" width="100" height="100" alt=""></div>${rankList(ranks,true)}</section>`;
 }
 
 function renderGame() {
   const s = view;
   mode.textContent = host ? 'HOST · ' + pin : 'PIN ' + pin;
-  audio.scene(host && !introRoom && (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) ? s.phase : '');
+  let musicScene='';
+  if (host && !introRoom) {
+    if (s.phase==='countdown' && s.idx===0) musicScene='opening';
+    else if (s.phase==='lobby' || s.phase==='question' && !s.paused && !s.locked) musicScene=s.phase;
+  }
+  audio.scene(musicScene);
   let html;
   if (s.phase === 'lobby') html = lobbyMarkup(s);
   else if (s.phase==='countdown') html = countdownMarkup(s);
@@ -584,7 +619,9 @@ function tick() {
       face.textContent=label;
       digit.replaceChildren(face);
       digit.dataset.tick=label;
-      if (seconds) audio.play('count');
+      const pips=screen.querySelector('#round-pips');
+      if (pips) pips.dataset.lit=seconds;
+      if (seconds) audio.play(seconds===1?'countLast':seconds===2?'countMid':'count');
     }
     const now=performance.now();
     if (!seconds && !busyRead && now-countdownRefreshAt>=240) {

@@ -90,18 +90,11 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
 .rank-list { display: grid; gap: 10px; padding: 0; list-style: none }
 .rank-list li { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 12px; align-items: center; background: #392527; padding: 12px 16px; border-radius: 10px; overflow-wrap: anywhere; font-size: clamp(1.05rem, 2vw, 1.65rem) }
 .rank-list strong { color: var(--yellow) }
-.podium { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; align-items: end; text-align: center; margin: 18px 0 }
-.podium article { flex: 1 1 145px; padding: 14px 8px; border-radius: 14px; background: #552123; min-width: 0; overflow-wrap: anywhere; animation: rise .5s ease-out }
-.podium article:first-child { background: var(--yellow); color: #26180d; padding-block: 26px }
-.podium b { display: block; font-size: 2.3rem }
-.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden }
-.confetti i { position: absolute; top: -5vh; width: 9px; height: 16px; animation: fall 2.5s ease-in both }
 #message:not(:empty) { position: fixed; bottom: max(15px,env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: max-content; max-width: 92vw; padding: 10px 16px; background: #fff8ef; color: #141414; border-radius: 10px; z-index: 4; box-shadow: 0 5px 25px #0008 }
 .editor-row { border: 1px solid var(--line); border-radius: 12px; padding: 13px; display: grid; gap: 7px }
 .editor-row .media { max-height: 110px }
 .action-link { display: inline-block; margin-top: 16px; color: var(--paper); }
 @keyframes rise { from { opacity: .2; transform: translateY(8px) } }
-@keyframes fall { to { transform: translate(10vw,110vh) rotate(650deg); opacity: 0 } }
 @media(max-width: 650px) {
   .lobby { grid-template-columns: 1fr }
   .pin-card { grid-row: 1 }
@@ -111,7 +104,6 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
 }
 @media(prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important }
-  .confetti { display: none }
 }
 
 .welcome { display: flex; align-items: center; gap: clamp(8px,2vw,24px); margin-bottom: 12px }
@@ -128,25 +120,6 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
 .round-card #tally { margin: 12px 0 0 }
 .game-stage { min-width: 0 }
 .game-stage > .toolbar { margin-top: 10px }
-.final-card { position: relative; background: radial-gradient(ellipse at 50% 100%,#a31f28,#590b1a 68%,#471018); }
-.mascot-win { width: clamp(60px,11vmin,130px) }
-.podium-five { align-items: flex-end; gap: clamp(5px,1vw,16px); flex-wrap: nowrap }
-.podium-five article {
-  flex: 1 1 0; max-width: 240px; display: flex; flex-direction: column; justify-content: center; align-items: center;
-  min-height: 125px; padding: clamp(7px,1vw,16px) 4px; background: #792433; border: 1px solid #ffffff3b;
-  animation: podium-reveal .55s cubic-bezier(.2,.72,.28,1.1) var(--reveal-delay,0s) both;
-}
-.podium-five article[data-rank="1"] { order: 3; min-height: 230px; background: linear-gradient(155deg,#fff190,#ffc142); color: #2c190b }
-.podium-five article[data-rank="2"] { order: 2; min-height: 185px; background: linear-gradient(145deg,#f3f2fb,#b8bbce); color: #242236 }
-.podium-five article[data-rank="3"] { order: 4; min-height: 155px; background: linear-gradient(145deg,#f4c5a0,#d68359); color: #361c16 }
-.podium-five article[data-rank="4"] { order: 1 }
-.podium-five article[data-rank="5"] { order: 5 }
-.podium-five article h2 { font-size: clamp(.85rem,2vw,1.6rem); margin: 0 0 .25em; width: 100%; overflow-wrap: anywhere }
-.podium-five article strong { font-size: clamp(.73rem,1.4vw,1.05rem) }
-.podium-five .podium-place { font-size: clamp(1.65rem,4vw,3.6rem); line-height: 1; font-weight: 800 }
-.podium-avatar { font-size: clamp(1rem,2.6vw,2.3rem) }
-@keyframes podium-reveal { from { opacity: 0; transform: translateY(28px) scale(.91) } }
-
 @media (orientation: landscape) and (min-width: 750px) and (min-height: 360px) {
   .host.in-game .top { min-height: 48px; padding-block: max(5px,env(safe-area-inset-top)) 5px }
   .host.in-game main { width: min(97%,105rem); min-height: calc(100dvh - 64px); display: grid; place-items: center; padding-block: 4px }
@@ -172,11 +145,6 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
   .host.in-game.wide-stage .round-prompt .media { max-height: min(10cqw,175px); max-width: 26cqw }
   .host.in-game.wide-stage .rank-list { gap: clamp(3px,.55cqw,12px); margin-block: 4px }
   .host.in-game.wide-stage .rank-list li { padding: clamp(2px,.7cqw,13px) 14px; font-size: clamp(1rem,1.65cqw,1.9rem) }
-  .host.in-game.wide-stage .podium-five { margin-block: 4px; }
-  .host.in-game.wide-stage .podium-five article { min-height: clamp(74px,10cqw,170px) }
-  .host.in-game.wide-stage .podium-five article[data-rank="1"] { min-height: clamp(115px,16cqw,265px) }
-  .host.in-game.wide-stage .podium-five article[data-rank="2"] { min-height: clamp(95px,13cqw,215px) }
-  .host.in-game.wide-stage .podium-five article[data-rank="3"] { min-height: clamp(84px,11.5cqw,185px) }
   .host.in-game.wide-stage .toolbar button, .host.in-game.wide-stage .pin-card button { min-height: 36px; padding-block: 5px; }
   .host.in-game.wide-stage .toolbar summary { padding: 0; }
 }
@@ -185,11 +153,6 @@ progress { display: block; width: 100%; height: 7px; accent-color: var(--yellow)
   .host .top-actions { gap: 4px }
   .host .top-actions button { padding-inline: 6px }
   .option-copy { overflow-wrap: anywhere }
-  .podium-five article[data-rank] { padding-inline: 3px; }
-  .podium-five article[data-rank="1"] { min-height: 148px }
-  .podium-five article[data-rank="2"] { min-height: 127px }
-  .podium-five article[data-rank="3"] { min-height: 110px }
-  .podium-five article[data-rank="4"], .podium-five article[data-rank="5"] { min-height: 98px }
 }
 @media (max-width: 450px) {
   body:not(.host) .game-stage:is([data-phase="podium"],[data-phase="leaderboard"]) .entry { padding: 14px; }
