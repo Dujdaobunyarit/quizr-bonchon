@@ -139,17 +139,19 @@ function renderLogin() {
   mount(`<section class="card stack" style="max-width:31rem">
     <h1>เข้าสู่ระบบพิธีกร</h1>
     <form class="stack" id="login">
-      <label>อีเมล<input type="email" name="email" required autocomplete="username"></label>
+      <label>ชื่อผู้ใช้หรืออีเมล<input type="text" name="login" required autocomplete="username" autocapitalize="none" spellcheck="false"></label>
       <label>รหัสผ่าน<input type="password" name="password" required autocomplete="current-password"></label>
       <button>เข้าสู่ระบบ</button>
     </form><a class="action-link" href="./">กลับหน้าเข้าเกม</a></section>`);
   screen.querySelector('#login').onsubmit = async (event) => {
     event.preventDefault();
     event.submitter.disabled = true;
-    const form = Object.fromEntries(new FormData(event.target));
+    const form = new FormData(event.target);
+    const login = String(form.get('login')).trim().toLowerCase();
+    const email = login === 'elle' ? 'elle@quizr.example.com' : login;
     try {
-      const { error } = await db.auth.signInWithPassword(form);
-      if (error) { notice('อีเมลหรือรหัสผ่านไม่ถูกต้อง'); return; }
+      const { error } = await db.auth.signInWithPassword({email, password: form.get('password')});
+      if (error) { notice('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'); return; }
       await dashboard();
     } catch (error) { notice(errorText(error)); }
     finally { event.submitter.disabled = false; }
